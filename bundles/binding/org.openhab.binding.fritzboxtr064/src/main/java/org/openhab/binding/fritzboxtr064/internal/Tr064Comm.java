@@ -694,6 +694,11 @@ public class Tr064Comm {
                         "wanPhysicalLinkStatus"),
                 "GetCommonLinkProperties", "urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1",
                 name -> name.replace("wan", "New")));
+        addItemMap(new MultiItemMap(
+                Arrays.asList("wanmax_ds", "wanmax_us", "wands_current_bps",
+                        "wanmc_current_bps", "wanus_current_bps"),
+                "X_AVM-DE_GetOnlineMonitor", "urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1",
+                name -> name.replace("wan", "New")));
         addItemMap(new SingleItemMap("wanTotalBytesSent", "GetTotalBytesSent",
                 "urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1", "", "NewTotalBytesSent"));
         addItemMap(new SingleItemMap("wanTotalBytesReceived", "GetTotalBytesReceived",
