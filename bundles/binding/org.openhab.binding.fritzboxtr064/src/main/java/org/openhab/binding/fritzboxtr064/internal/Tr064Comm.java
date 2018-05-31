@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2010-2017 by the respective copyright holders.
+ * Copyright (c) 2010-2018 by the respective copyright holders.
  *
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
@@ -14,9 +14,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import javax.xml.namespace.QName;
@@ -76,12 +78,11 @@ import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
-/***
- * Controls communication and parsing for TR064 communication with FritzBox
+/**
+ * Controls communication and parsing for TR064 communication with FritzBox.
  *
  * @author gitbock
  * @version 1.8.0
- *
  */
 public class Tr064Comm {
     private static final Logger logger = LoggerFactory.getLogger(Tr064Comm.class);
@@ -137,8 +138,8 @@ public class Tr064Comm {
         this._pw = _pw;
     }
 
-    /***
-     * makes sure all values are set properly before starting communications
+    /**
+     * Makes sure all values are set properly before starting communications.
      */
     private void init() {
         if (_user == null) {
@@ -160,7 +161,7 @@ public class Tr064Comm {
         return values.get(request);
     }
 
-    /***
+    /**
      * Fetches the values for the given item configurations from the FritzBox. Calls
      * the FritzBox SOAP services delivering the values for the item configurations.
      * The resulting map contains the values of all item configurations returned by
@@ -207,11 +208,12 @@ public class Tr064Comm {
                                                                                                                  // element
                 bodyData = body.addBodyElement(bodyName);
                 // only if input parameter is present
-                if (itemConfiguration.getDataInValue().isPresent()) {
-                    if (itemMap instanceof ParametrizedItemMap) {
-                        String dataInName = ((ParametrizedItemMap) itemMap).getReadDataInName();
-                        String dataInValue = itemConfiguration.getDataInValue().get();
-                        QName dataNode = new QName(dataInName); // service specific node name
+                if (itemMap instanceof ParametrizedItemMap) {
+                    for (InputArgument inputArgument : ((ParametrizedItemMap) itemMap)
+                            .getConfigInputArguments(itemConfiguration)) {
+                        String dataInName = inputArgument.getName();
+                        String dataInValue = inputArgument.getValue();
+                        QName dataNode = new QName(dataInName);
                         SOAPElement beDataNode = bodyData.addChildElement(dataNode);
                         // if input is mac address, replace "-" with ":" as fbox wants
                         if (itemConfiguration.getItemCommand().equals("maconline")) {
@@ -219,9 +221,8 @@ public class Tr064Comm {
                         }
                         beDataNode.addTextNode(dataInValue); // add data which should be requested from fbox for this
                                                              // service
-                    } else {
-                        logger.warn("item map for command {} does not support dataInValue", itemCommand);
                     }
+
                 }
                 logger.trace("Raw SOAP Request to be sent to FritzBox: {}", soapToString(msg));
 
@@ -260,15 +261,14 @@ public class Tr064Comm {
         return values;
     }
 
-    /***
-     * Sets a parameter in fbox. Called from event bus
+    /**
+     * Sets a parameter in fbox. Called from event bus.
      *
      * @param request
      *            config string from itemconfig
      * @param cmd
      *            command to set
      */
-
     public void setTr064Value(ItemConfiguration request, Command cmd) {
         String itemCommand = request.getItemCommand();
 
@@ -295,20 +295,19 @@ public class Tr064Comm {
                                                                                                               // body
                                                                                                               // element
             bodyData = body.addBodyElement(bodyName);
-            // only if input parameter is present
-            if (request.getDataInValue().isPresent()) {
-                String dataInValueAdd = request.getDataInValue().get(); // additional parameter to set e.g. id of TAM to
-                                                                        // set
-                QName dataNode = new QName(itemMap.getWriteDataInNameAdditional()); // name of additional para to set
-                SOAPElement beDataNode = bodyData.addChildElement(dataNode);
-                beDataNode.addTextNode(dataInValueAdd); // add value which should be set
+
+            List<InputArgument> writeInputArguments = new ArrayList<>();
+            writeInputArguments.add(itemMap.getWriteInputArgument(cmd));
+            if (itemMap instanceof ParametrizedItemMap) {
+                writeInputArguments.addAll(((ParametrizedItemMap) itemMap).getConfigInputArguments(request));
             }
 
-            // convert String command into numeric
-            String setDataInValue = cmd.toString().equalsIgnoreCase("on") ? "1" : "0";
-            QName dataNode = new QName(itemMap.getWriteDataInName()); // service specific node name
-            SOAPElement beDataNode = bodyData.addChildElement(dataNode);
-            beDataNode.addTextNode(setDataInValue); // add data which should be requested from fbox for this service
+            for (InputArgument inputArgument : writeInputArguments) {
+                QName dataNode = new QName(inputArgument.getName());
+                SOAPElement beDataNode = bodyData.addChildElement(dataNode);
+                beDataNode.addTextNode(inputArgument.getValue());
+            }
+
             logger.debug("SOAP Msg to send to FritzBox for setting data: {}", soapToString(msg));
 
         } catch (Exception e) {
@@ -349,9 +348,9 @@ public class Tr064Comm {
 
     }
 
-    /***
-     * Creates a apache HTTP Client object, ignoring SSL Exceptions like self signed
-     * certificates and sets Auth. Scheme to Digest Auth
+    /**
+     * Creates an Apache HTTP Client object, ignoring SSL Exceptions like self signed
+     * certificates, and sets Auth. Scheme to Digest Auth.
      *
      * @param fboxUrl
      *            the URL from config file of fbox to connect to
@@ -416,8 +415,8 @@ public class Tr064Comm {
         return hc;
     }
 
-    /***
-     * converts SOAP msg into string
+    /**
+     * Converts SOAP message into string.
      *
      * @param sm
      * @return
@@ -434,7 +433,7 @@ public class Tr064Comm {
         return strMsg;
     }
 
-    /***
+    /**
      *
      * @param soapActionHeader
      *            String in HTTP Header. specific for each TR064 service
@@ -479,15 +478,12 @@ public class Tr064Comm {
 
         } catch (UnsupportedEncodingException e) {
             logger.error("Encoding not supported: {}", e.getMessage().toString());
-            response = null;
             exceptionOccurred = true;
         } catch (ClientProtocolException e) {
             logger.error("Client Protocol not supported: {}", e.getMessage().toString());
-            response = null;
             exceptionOccurred = true;
         } catch (IOException e) {
             logger.error("Cannot send/receive: {}", e.getMessage().toString());
-            response = null;
             exceptionOccurred = true;
         } catch (UnsupportedOperationException e) {
             logger.error("Operation unsupported: {}", e.getMessage().toString());
@@ -495,7 +491,6 @@ public class Tr064Comm {
             exceptionOccurred = true;
         } catch (SOAPException e) {
             logger.error("SOAP Error: {}", e.getMessage().toString());
-            response = null;
             exceptionOccurred = true;
         } finally {
             // Make sure connection is released. If error occurred make sure to print in log
@@ -513,7 +508,7 @@ public class Tr064Comm {
     }
 
     /**
-     * In case of failure reset the authentication state, close connection and init
+     * In case of failure, reset the authentication state, close connection and init
      * again.
      */
     private void resetHttpClient() {
@@ -530,9 +525,9 @@ public class Tr064Comm {
         _httpClient = createTr064HttpClient(_url);
     }
 
-    /***
-     * sets all required namespaces and prepares the SOAP message to send creates
-     * skeleton + body data
+    /**
+     * Sets all required namespaces and prepares the SOAP message to send.
+     * Creates skeleton + body data.
      *
      * @param bodyData
      *            is attached to skeleton to form entire SOAP message
@@ -576,11 +571,10 @@ public class Tr064Comm {
         }
 
         return soapMsg;
-
     }
 
-    /***
-     * looks for the proper item mapping for the item command given from item file
+    /**
+     * Looks for the proper item mapping for the item command given from item file.
      *
      * @param itemCommand
      *            String item command
@@ -595,8 +589,8 @@ public class Tr064Comm {
         return foundMapping;
     }
 
-    /***
-     * determines Service including which URL to connect to for value request
+    /**
+     * Determines Service including which URL to connect to for value request.
      *
      * @param the
      *            itemmap for which the service is searched
@@ -611,9 +605,9 @@ public class Tr064Comm {
         return foundService;
     }
 
-    /***
+    /**
      * Connects to fbox service xml to get a list of all services which are offered
-     * by TR064. Saves it into local list
+     * by TR064. Saves it into local list.
      */
     private void readAllServices() {
         Document xml = getFboxXmlResponse(_url + "/" + TR064DOWNLOADFILE);
@@ -642,11 +636,11 @@ public class Tr064Comm {
     }
 
     /**
-     * populates local static mapping table todo: refactore to read from config file
-     * later? sets the parser based on the itemcommand -> soap value parser "svp"
-     * anonymous method for each mapping
-     *
+     * Populates local static mapping table.
+     * Sets the parser based on the itemcommand -> soap value parser "svp"
+     * anonymous method for each mapping.
      */
+    // TODO: refactor to read from config file later?
     private void generateItemMappings() {
         // services available from fbox. Needed for e.g. wifi select 5GHz/Guest Wifi
         if (_allServices.isEmpty()) { // no services are known yet?
@@ -654,8 +648,10 @@ public class Tr064Comm {
         }
 
         // Mac Online Checker
-        SingleItemMap imMacOnline = new SingleItemMap("maconline", "GetSpecificHostEntry",
-                "urn:LanDeviceHosts-com:serviceId:Hosts1", "NewMACAddress", "NewActive", new SoapValueParser() {
+        SingleItemMap imMacOnline = SingleItemMap.builder().itemCommand("maconline")
+                .serviceId("urn:LanDeviceHosts-com:serviceId:Hosts1").itemArgumentName("NewActive")
+                .configArgumentNames("NewMACAddress").readServiceCommand("GetSpecificHostEntry")
+                .soapValueParser(new SoapValueParser() {
 
                     @Override
                     protected String parseValueFromSoapFault(ItemConfiguration itemConfiguration, SOAPFault soapFault,
@@ -678,15 +674,17 @@ public class Tr064Comm {
 
                         return value;
                     }
-                });
+                }).build();
         addItemMap(imMacOnline);
 
         addItemMap(new MultiItemMap(Arrays.asList("modelName", "manufacturerName", "softwareVersion", "serialNumber"),
                 "GetInfo", "urn:DeviceInfo-com:serviceId:DeviceInfo1", name -> "New" + WordUtils.capitalize(name)));
-        addItemMap(new SingleItemMap("wanip", "GetExternalIPAddress",
-                "urn:WANPPPConnection-com:serviceId:WANPPPConnection1", "", "NewExternalIPAddress"));
-        addItemMap(new SingleItemMap("externalWanip", "GetExternalIPAddress",
-                "urn:WANIPConnection-com:serviceId:WANIPConnection1", "", "NewExternalIPAddress"));
+        addItemMap(SingleItemMap.builder().itemCommand("wanip")
+                .serviceId("urn:WANPPPConnection-com:serviceId:WANPPPConnection1")
+                .itemArgumentName("NewExternalIPAddress").readServiceCommand("GetExternalIPAddress").build());
+        addItemMap(SingleItemMap.builder().itemCommand("externalWanip")
+                .serviceId("urn:WANIPConnection-com:serviceId:WANIPConnection1")
+                .itemArgumentName("NewExternalIPAddress").readServiceCommand("GetExternalIPAddress").build());
 
         // WAN Status
         addItemMap(new MultiItemMap(
@@ -695,14 +693,18 @@ public class Tr064Comm {
                 "GetCommonLinkProperties", "urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1",
                 name -> name.replace("wan", "New")));
 
-        addItemMap(new SingleItemMap("wands_current_bps", "X_AVM-DE_GetOnlineMonitor",
-                "urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1", "NewSyncGroupIndex", "Newds_current_bps"));
-        addItemMap(new SingleItemMap("wanus_current_bps", "X_AVM-DE_GetOnlineMonitor",
-                "urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1", "NewSyncGroupIndex", "Newus_current_bps"));
-        addItemMap(new SingleItemMap("wanTotalBytesSent", "GetTotalBytesSent",
-                "urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1", "", "NewTotalBytesSent"));
-        addItemMap(new SingleItemMap("wanTotalBytesReceived", "GetTotalBytesReceived",
-                "urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1", "", "NewTotalBytesReceived"));
+        addItemMap(SingleItemMap.builder().itemCommand("wands_current_bps")
+                .serviceId("urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1").itemArgumentName("NewSyncGroupIndex")
+                .itemArgumentName("Newds_current_bps").readServiceCommand("X_AVM-DE_GetOnlineMonitor").build());
+        addItemMap(SingleItemMap.builder().itemCommand("wands_current_bps")
+                .serviceId("urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1").itemArgumentName("NewSyncGroupIndex")
+                .itemArgumentName("Newds_current_bps").readServiceCommand("X_AVM-DE_GetOnlineMonitor").build());
+        addItemMap(SingleItemMap.builder().itemCommand("wanTotalBytesSent")
+                .serviceId("urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1")
+                .itemArgumentName("NewTotalBytesSent").readServiceCommand("GetTotalBytesSent").build());
+        addItemMap(SingleItemMap.builder().itemCommand("wanTotalBytesReceived")
+                .serviceId("urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1")
+                .itemArgumentName("NewTotalBytesReceived").readServiceCommand("GetTotalBytesReceived").build());
 
         // DSL Status
         addItemMap(new MultiItemMap(
@@ -715,23 +717,20 @@ public class Tr064Comm {
                 "urn:WANDSLIfConfig-com:serviceId:WANDSLInterfaceConfig1", name -> name.replace("dsl", "New")));
 
         // Wifi 2,4GHz
-        SingleItemMap imWifi24Switch = new SingleItemMap("wifi24Switch", "GetInfo",
-                "urn:WLANConfiguration-com:serviceId:WLANConfiguration1", "", "NewEnable");
-        imWifi24Switch.setWriteServiceCommand("SetEnable");
-        imWifi24Switch.setWriteDataInName("NewEnable");
+        SingleItemMap imWifi24Switch = SingleItemMap.builder().itemCommand("wifi24Switch")
+                .serviceId("urn:WLANConfiguration-com:serviceId:WLANConfiguration1").itemArgumentName("NewEnable")
+                .readServiceCommand("GetInfo").writeServiceCommand("SetEnable").build();
         addItemMap(imWifi24Switch);
 
         // wifi 5GHz
-        SingleItemMap imWifi50Switch = new SingleItemMap("wifi50Switch", "GetInfo",
-                "urn:WLANConfiguration-com:serviceId:WLANConfiguration2", "", "NewEnable");
-        imWifi50Switch.setWriteServiceCommand("SetEnable");
-        imWifi50Switch.setWriteDataInName("NewEnable");
+        SingleItemMap imWifi50Switch = SingleItemMap.builder().itemCommand("wifi50Switch")
+                .serviceId("urn:WLANConfiguration-com:serviceId:WLANConfiguration2").itemArgumentName("NewEnable")
+                .readServiceCommand("GetInfo").writeServiceCommand("SetEnable").build();
 
         // guest wifi
-        SingleItemMap imWifiGuestSwitch = new SingleItemMap("wifiGuestSwitch", "GetInfo",
-                "urn:WLANConfiguration-com:serviceId:WLANConfiguration3", "", "NewEnable");
-        imWifiGuestSwitch.setWriteServiceCommand("SetEnable");
-        imWifiGuestSwitch.setWriteDataInName("NewEnable");
+        SingleItemMap imWifiGuestSwitch = SingleItemMap.builder().itemCommand("wifiGuestSwitch")
+                .serviceId("urn:WLANConfiguration-com:serviceId:WLANConfiguration3").itemArgumentName("NewEnable")
+                .readServiceCommand("GetInfo").writeServiceCommand("SetEnable").build();
 
         // check if 5GHz wifi and/or guest wifi is available.
         Tr064Service svc5GHzWifi = determineServiceByItemMapping(imWifi50Switch);
@@ -758,23 +757,23 @@ public class Tr064Comm {
 
         // Phonebook Download
         // itemcommand is dummy: not a real item
-        ItemMap imPhonebook = new SingleItemMap("phonebook", "GetPhonebook",
-                "urn:X_AVM-DE_OnTel-com:serviceId:X_AVM-DE_OnTel1", "NewPhonebookID", "NewPhonebookURL");
+        ItemMap imPhonebook = SingleItemMap.builder().itemCommand("phonebook")
+                .serviceId("urn:X_AVM-DE_OnTel-com:serviceId:X_AVM-DE_OnTel1").configArgumentNames("NewPhonebookID")
+                .itemArgumentName("NewPhonebookURL").readServiceCommand("GetPhonebook").build();
         addItemMap(imPhonebook);
 
         // TAM (telephone answering machine) Switch
-        SingleItemMap imTamSwitch = new SingleItemMap("tamSwitch", "GetInfo",
-                "urn:X_AVM-DE_TAM-com:serviceId:X_AVM-DE_TAM1", "NewIndex", "NewEnable");
-        imTamSwitch.setWriteServiceCommand("SetEnable");
-        imTamSwitch.setWriteDataInName("NewEnable");
-        imTamSwitch.setWriteDataInNameAdditional("NewIndex"); // additional Parameter to set
+        SingleItemMap imTamSwitch = SingleItemMap.builder().itemCommand("tamSwitch")
+                .serviceId("urn:X_AVM-DE_TAM-com:serviceId:X_AVM-DE_TAM1").configArgumentNames("NewIndex")
+                .itemArgumentName("NewEnable").readServiceCommand("GetInfo").writeServiceCommand("SetEnable").build();
         addItemMap(imTamSwitch);
 
         // New Messages per TAM ID
         // two requests needed: First gets URL to download tam info from, 2nd contains
         // info of messages
-        SingleItemMap imTamNewMessages = new SingleItemMap("tamNewMessages", "GetMessageList",
-                "urn:X_AVM-DE_TAM-com:serviceId:X_AVM-DE_TAM1", "NewIndex", "NewURL", new SoapValueParser() {
+        SingleItemMap imTamNewMessages = SingleItemMap.builder().itemCommand("tamNewMessages")
+                .serviceId("urn:X_AVM-DE_TAM-com:serviceId:X_AVM-DE_TAM1").configArgumentNames("NewIndex")
+                .itemArgumentName("NewURL").readServiceCommand("GetMessageList").soapValueParser(new SoapValueParser() {
 
                     @Override
                     protected String parseValueFromSoapBody(ItemConfiguration itemConfiguration, SOAPBody soapBody,
@@ -810,14 +809,16 @@ public class Tr064Comm {
 
                         return value;
                     }
-                });
+                }).build();
         addItemMap(imTamNewMessages);
 
         // Missed calls
         // two requests: 1st fetches URL to download call list, 2nd fetches xml call
         // list
-        SingleItemMap imMissedCalls = new SingleItemMap("missedCallsInDays", "GetCallList",
-                "urn:X_AVM-DE_OnTel-com:serviceId:X_AVM-DE_OnTel1", "NewDays", "NewCallListURL", new SoapValueParser() {
+        SingleItemMap imMissedCalls = SingleItemMap.builder().itemCommand("missedCallsInDays")
+                .serviceId("urn:X_AVM-DE_OnTel-com:serviceId:X_AVM-DE_OnTel1").itemArgumentName("NewCallListURL")
+                .readServiceCommand("GetCallList").configArgumentNames("NewDays")
+                .soapValueParser(new SoapValueParser() {
 
                     @Override
                     protected String parseValueFromSoapBody(ItemConfiguration itemConfiguration, SOAPBody soapBody,
@@ -829,9 +830,9 @@ public class Tr064Comm {
 
                         // extract how many days of call list should be examined for missed calls
                         String days = "3"; // default
-                        if (!itemConfiguration.getAdditionalParameters().isEmpty()) {
-                            days = itemConfiguration.getAdditionalParameters().get(0); // set the days as defined in
-                                                                                       // item config.
+                        if (!itemConfiguration.getArgumentValues().isEmpty()) {
+                            days = itemConfiguration.getArgumentValues().get(0); // set the days as defined in item
+                                                                                 // config.
                             // Otherwise default value of 3 is used
                         }
 
@@ -864,9 +865,15 @@ public class Tr064Comm {
 
                         return value;
                     }
-                });
+                }).build();
         addItemMap(imMissedCalls);
 
+        // call deflection
+        SingleItemMap callDeflection = SingleItemMap.builder().itemCommand("callDeflectionSwitch")
+                .serviceId("urn:X_AVM-DE_OnTel-com:serviceId:X_AVM-DE_OnTel1").configArgumentNames("NewDeflectionId")
+                .itemArgumentName("NewEnable").readServiceCommand("GetDeflection")
+                .writeServiceCommand("SetDeflectionEnable").build();
+        addItemMap(callDeflection);
     }
 
     private void addItemMap(ItemMap itemMap) {
@@ -878,9 +885,9 @@ public class Tr064Comm {
         }
     }
 
-    /***
-     * sets up a raw http(s) connection to Fbox and gets xml response as XML
-     * Document, ready for parsing
+    /**
+     * Sets up a raw http(s) connection to Fbox and gets xml response as XML
+     * Document, ready for parsing.
      *
      * @return
      */
