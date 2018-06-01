@@ -694,11 +694,13 @@ public class Tr064Comm {
                 name -> name.replace("wan", "New")));
 
         addItemMap(SingleItemMap.builder().itemCommand("wands_current_bps")
-                .serviceId("urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1").itemArgumentName("NewSyncGroupIndex")
-                .itemArgumentName("Newds_current_bps").readServiceCommand("X_AVM-DE_GetOnlineMonitor").build());
+                .serviceId("urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1")
+                .configArgumentNames("NewSyncGroupIndex").itemArgumentName("Newds_current_bps")
+                .readServiceCommand("X_AVM-DE_GetOnlineMonitor").build());
         addItemMap(SingleItemMap.builder().itemCommand("wanus_current_bps")
-                .serviceId("urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1").itemArgumentName("NewSyncGroupIndex")
-                .itemArgumentName("Newus_current_bps").readServiceCommand("X_AVM-DE_GetOnlineMonitor").build());
+                .serviceId("urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1")
+                .configArgumentNames("NewSyncGroupIndex").itemArgumentName("Newus_current_bps")
+                .readServiceCommand("X_AVM-DE_GetOnlineMonitor").build());
         addItemMap(SingleItemMap.builder().itemCommand("wanTotalBytesSent")
                 .serviceId("urn:WANCIfConfig-com:serviceId:WANCommonInterfaceConfig1")
                 .itemArgumentName("NewTotalBytesSent").readServiceCommand("GetTotalBytesSent").build());
